@@ -170,6 +170,21 @@ button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
 @media (max-width:520px){ .wordmark{display:none} .ico.zoomOut{padding:0 8px; gap:4px} }
 @media (max-width:420px){ .ico{width:34px; height:34px; border-radius:11px} .ico svg{width:19px; height:19px} }
 
+/* 작품함 (저장 · 불러오기) */
+.wkbox{display:flex; flex-direction:column; gap:9px; width:min(84vw,360px)}
+.wkacts{display:flex; gap:6px; flex-wrap:wrap}
+.wkacts .pick{width:auto; flex:1 1 0; min-width:96px; padding:0 10px; gap:6px; display:flex; align-items:center; justify-content:center; font-size:13px; font-weight:500; white-space:nowrap}
+.wkacts .pick svg{width:18px; height:18px; flex:0 0 auto}
+.wkhead{font-size:12.5px; color:var(--muted); margin:2px 2px -2px}
+.wkgrid{display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; max-height:min(52vh,420px); overflow:auto; padding:2px}
+.wk{position:relative; min-width:0}
+.wkth{display:block; width:100%; padding:3px; border-radius:12px; border:1px solid var(--line); background:var(--sunk); line-height:0}
+.wkth img{width:100%; height:auto; display:block; border-radius:9px}
+.wkth[aria-pressed="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent)}
+.wkcap{font-size:11.5px; color:var(--muted); text-align:center; margin-top:3px; font-variant-numeric:tabular-nums}
+.wkdel{position:absolute; top:7px; right:7px; width:26px; height:26px; border-radius:50%; background:rgba(20,16,38,.62); color:#fff; display:grid; place-items:center; font-size:15px; line-height:1}
+.wkempty{font-size:12.5px; color:var(--muted); text-align:center; padding:14px 0}
+
 /* 도구 레일의 크기·방향 조절 (모양·스티커를 골랐을 때만 나온다) */
 .rctl{display:flex; flex-direction:row; gap:5px; flex:0 0 auto; align-items:center}
 .ric svg{width:18px; height:18px; color:var(--muted); display:block; flex:0 0 auto}
@@ -321,7 +336,7 @@ input[type=range]{width:88px; accent-color:var(--accent); height:28px; touch-act
     <button class="ico" id="paperBtn" title="종이 고르기" aria-label="종이 고르기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.2h7l4 4v13.6h-11z"/><path d="M13.5 3.2v4h4"/></svg>
     </button>
-    <button class="ico" id="projSave" title="저장 (자동으로도 저장돼요)" aria-label="저장">
+    <button class="ico" id="projSave" title="저장 · 불러오기" aria-label="저장 · 불러오기" data-pop="1">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/></svg>
     </button>
     <button class="ico" id="undo" title="되돌리기" aria-label="되돌리기" disabled>
@@ -365,6 +380,7 @@ input[type=range]{width:88px; accent-color:var(--accent); height:28px; touch-act
   </div>
 </div>
 
+<input type="file" id="imgFile" accept="image/*" hidden>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <div class="overlay" id="saveBox" hidden>
   <div class="sheet">
@@ -3722,8 +3738,11 @@ function demo(){
   S.tool='brush'; S.shape='wave'; S.brush=keep.b; S.ink=keep.i; S.size=keep.s; S.reach=keep.r; S.dense=keep.d; S.sym=keep.y; S.pen=keep.p;
 }
 
-/* ---------- 저장 · 자동 저장 (기기 안 IndexedDB) ---------- */
-var PROJ_KEY='project', toastEl=document.getElementById('toast'), toastT, projBtn=document.getElementById('projSave');
+/* ---------- 저장 · 불러오기 · 자동 저장 (기기 안 IndexedDB) ----------
+   그림 하나 = 'work:<id>' 한 칸.  'index' = 작품함 목록(작은 그림 포함).  'current' = 마지막으로 연 그림 */
+var toastEl=document.getElementById('toast'), toastT, projBtn=document.getElementById('projSave');
+var curId=null;
+function newId(){ return 'w'+Date.now().toString(36)+Math.random().toString(36).slice(2,6); }
 function toast(msg){ toastEl.textContent=msg; toastEl.classList.add('on'); clearTimeout(toastT); toastT=setTimeout(function(){ toastEl.classList.remove('on'); },1800); }
 var DBP=null;
 function openDB(){
@@ -3762,32 +3781,148 @@ function snapshot(){
   var meta={ratio:S.ratio,res:S.res,paper:S.paper,texture:S.texture,cur:cur,savedAt:Date.now()};
   return Promise.all(jobs).then(function(ls){ meta.layers=ls; return meta; });
 }
-var saving=false, again=false, ready=false, saveT=null;
+var saving=false, again=false, ready=false, saveT=null, IQ=Promise.resolve();
+function kvDel(k){
+  return openDB().then(function(d){ return new Promise(function(res,rej){
+    var t=d.transaction('kv','readwrite'); t.objectStore('kv').delete(k);
+    t.oncomplete=function(){ res(); }; t.onerror=function(){ rej(t.error); };
+  }); });
+}
+function editIndex(fn){   // 작품함 목록은 한 번에 하나씩만 고친다
+  IQ=IQ.then(function(){ return kvGet('index'); }).then(function(l){ l=fn(l||[])||l||[]; return kvSet('index',l); }).catch(function(){});
+  return IQ;
+}
+function thumbBlob(){
+  var tw=320, th=Math.round(tw*board.height/board.width);
+  var c=document.createElement('canvas'); c.width=tw; c.height=th;
+  c.getContext('2d').drawImage(board,0,0,tw,th);
+  return new Promise(function(res){ c.toBlob(res,'image/jpeg',.82); });
+}
+function hhmm(t){ t=new Date(t); return ('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2); }
 function saveNow(manual){
   clearTimeout(saveT);
-  if(!ready) return;
+  if(!ready) return Promise.resolve();
   if(manual&&sel) commitSel();
-  if(drawing||sel){ saveT=setTimeout(function(){ saveNow(false); },800); return; }   // 그리는 중·선택 중엔 잠깐 미룬다
-  if(!manual&&!dirty) return;
-  if(saving){ again=true; return; }
+  if(drawing||sel){ saveT=setTimeout(function(){ saveNow(false); },800); return Promise.resolve(); }   // 그리는 중·선택 중엔 잠깐 미룬다
+  if(!manual&&!dirty) return Promise.resolve();
+  if(saving){ again=true; return Promise.resolve(); }
   saving=true; dirty=false;
-  snapshot().then(kvSet.bind(null,PROJ_KEY)).then(function(){
-    var t=new Date(); var hm=('0'+t.getHours()).slice(-2)+':'+('0'+t.getMinutes()).slice(-2);
-    projBtn.title='저장됨 '+hm+' (자동으로도 저장돼요)';
-    projBtn.classList.add('flash'); setTimeout(function(){ projBtn.classList.remove('flash'); },900);
-    if(manual) toast('저장했어요 ('+hm+')');
+  var id=curId;
+  return Promise.all([snapshot(),thumbBlob()]).then(function(r){
+    var P=r[0], th=r[1]; P.id=id;
+    return kvSet('work:'+id,P).then(function(){
+      return editIndex(function(l){
+        var old=null; l=l.filter(function(x){ if(x.id===id){ old=x; return false; } return true; });
+        l.unshift({id:id, savedAt:P.savedAt, created:old?old.created:P.savedAt, thumb:th});
+        return l;
+      });
+    }).then(function(){ return kvSet('current',id); }).then(function(){
+      projBtn.title='저장됨 '+hhmm(P.savedAt)+' · 불러오기';
+      projBtn.classList.add('flash'); setTimeout(function(){ projBtn.classList.remove('flash'); },900);
+      if(manual) toast('저장했어요 ('+hhmm(P.savedAt)+')');
+    });
   }).catch(function(){
     dirty=true;
     if(manual) toast('이 기기에서는 저장하지 못했어요');
   }).then(function(){ saving=false; if(again){ again=false; schedSave(); } });
 }
 function schedSave(){ clearTimeout(saveT); saveT=setTimeout(function(){ saveNow(false); },1500); }
-projBtn.addEventListener('click',function(){ saveNow(true); });
 window.addEventListener('pointerup',function(){ if(ready) schedSave(); });
 window.addEventListener('keyup',function(){ if(ready) schedSave(); });
 document.addEventListener('visibilitychange',function(){ if(document.hidden) saveNow(false); });
 window.addEventListener('pagehide',function(){ saveNow(false); });
 if(CAP&&CAP.Plugins&&CAP.Plugins.App) CAP.Plugins.App.addListener('pause',function(){ saveNow(false); });
+
+/* 빈 종이로 새로 시작 */
+function blankCanvas(){
+  dropSel();
+  LY.length=1; useLayer(0);
+  var L=LY[0]; L.strokes.length=0; L.vis=true;
+  L.ctx.save(); L.ctx.setTransform(1,0,0,1,0,0); L.ctx.clearRect(0,0,L.art.width,L.art.height); L.ctx.restore();
+  undoStack.length=0; redoStack.length=0; syncHist();
+  compose(); layerUI();
+}
+function waitSaved(){ return saveNow(false).then(function(){ return IQ; }); }
+function startNew(){
+  closePop();
+  waitSaved().then(function(){
+    curId=newId(); blankCanvas(); dirty=true;
+    return saveNow(false);
+  }).then(function(){ toast('새 그림을 시작했어요'); });
+}
+function openWork(id){
+  if(id===curId){ closePop(); return; }
+  closePop();
+  waitSaved().then(function(){ return kvGet('work:'+id); }).then(function(P){
+    if(!P){ toast('그림을 찾지 못했어요'); return; }
+    return restoreProject(P).then(function(ok){
+      if(!ok) return;
+      curId=id; dirty=false; kvSet('current',id).catch(function(){});
+      toast('불러왔어요');
+    });
+  }).catch(function(){ toast('불러오지 못했어요'); });
+}
+function deleteWork(id){
+  if(!confirm('이 그림을 작품함에서 지울까요? 되돌릴 수 없어요.')) return;
+  kvDel('work:'+id).catch(function(){}).then(function(){
+    return editIndex(function(l){ return l.filter(function(x){ return x.id!==id; }); });
+  }).then(function(){
+    if(id===curId){ curId=newId(); blankCanvas(); dirty=true; return saveNow(false); }
+  }).then(function(){ if(pop&&pop._a===projBtn){ pop.innerHTML=''; buildWorks(pop); } });
+}
+/* 사진·그림 파일을 새 레이어로 가져오기 */
+var imgFile=document.getElementById('imgFile');
+imgFile.addEventListener('change',function(){
+  var f=imgFile.files&&imgFile.files[0]; imgFile.value='';
+  if(!f) return;
+  if(LY.length>=MAXLY){ toast('레이어가 가득 찼어요 (최대 '+MAXLY+'개)'); return; }
+  loadImg(f).then(function(im){
+    if(sel) commitSel();
+    var L=newLayer(); LY.splice(cur+1,0,L); useLayer(cur+1);
+    var bw=L.art.width, bh=L.art.height, k=Math.min(bw/im.naturalWidth, bh/im.naturalHeight, 1);
+    var w=im.naturalWidth*k, h=im.naturalHeight*k;
+    L.ctx.save(); L.ctx.setTransform(1,0,0,1,0,0); L.ctx.drawImage(im,(bw-w)/2,(bh-h)/2,w,h); L.ctx.restore();
+    pushOp({k:'add',id:L.id}); compose(); layerUI(); schedSave();
+    toast('새 레이어로 가져왔어요');
+  }).catch(function(){ toast('이 파일은 열 수 없어요'); });
+});
+function actBtn(label,svg,fn){
+  var b=el('button','pick','<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">'+svg+'</svg><span>'+label+'</span>');
+  b.type='button'; b.addEventListener('click',fn); return b;
+}
+function buildWorks(box){
+  var w=el('div','wkbox'), acts=el('div','wkacts');
+  acts.appendChild(actBtn('지금 저장','<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>',function(){ saveNow(true).then(function(){ if(pop&&pop._a===projBtn){ pop.innerHTML=''; buildWorks(pop); } }); }));
+  acts.appendChild(actBtn('새 그림','<path d="M12 5v14M5 12h14"/>',startNew));
+  acts.appendChild(actBtn('사진 가져오기','<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/>',function(){ closePop(); imgFile.click(); }));
+  w.appendChild(acts);
+  w.appendChild(el('div','wkhead','작품함 — 눌러서 불러오기'));
+  var grid=el('div','wkgrid'); grid.appendChild(el('div','wkempty','불러오는 중…')); w.appendChild(grid);
+  box.appendChild(w);
+  kvGet('index').catch(function(){ return null; }).then(function(l){
+    grid.innerHTML='';
+    l=l||[];
+    if(!l.length){ grid.appendChild(el('div','wkempty','아직 저장된 그림이 없어요')); grid.style.display='block'; }
+    l.forEach(function(x){
+      var item=el('div','wk'), th=el('button','wkth'); th.type='button';
+      th.setAttribute('aria-pressed',String(x.id===curId));
+      th.setAttribute('aria-label',hhmm(x.savedAt)+' 그림 불러오기');
+      if(x.thumb){ var im=new Image(); im.alt=''; im.src=URL.createObjectURL(x.thumb); im.onload=function(){ URL.revokeObjectURL(im.src); }; th.appendChild(im); }
+      th.addEventListener('click',function(){ openWork(x.id); });
+      var d=new Date(x.savedAt);
+      var cap=el('div','wkcap',(d.getMonth()+1)+'/'+d.getDate()+' '+hhmm(x.savedAt)+(x.id===curId?' · 지금 그림':''));
+      var del=el('button','wkdel','×'); del.type='button'; del.title='지우기'; del.setAttribute('aria-label','이 그림 지우기');
+      del.addEventListener('click',function(e){ e.stopPropagation(); deleteWork(x.id); });
+      item.appendChild(th); item.appendChild(cap); item.appendChild(del); grid.appendChild(item);
+    });
+    if(pop&&pop._a===projBtn) placePop();
+  });
+}
+projBtn.addEventListener('click',function(ev){
+  ev.stopPropagation();
+  if(ready&&dirty) saveNow(false);
+  openPop(projBtn,buildWorks,'below');
+});
 
 function loadImg(blob){
   return new Promise(function(res,rej){
@@ -3818,21 +3953,26 @@ function restoreProject(P){
   });
 }
 function loadProject(){
-  var timeout=new Promise(function(res){ setTimeout(function(){ res(null); },2500); });
-  var get=kvGet(PROJ_KEY).catch(function(){ return null; });
-  return Promise.race([get,timeout]).then(function(P){ return P?restoreProject(P).catch(function(){ return false; }):false; });
+  var timeout=new Promise(function(res){ setTimeout(function(){ res('timeout'); },2500); });
+  var job=kvGet('current').then(function(id){
+    if(id) return kvGet('work:'+id).then(function(P){
+      if(!P) return false;
+      return restoreProject(P).then(function(ok){ if(ok) curId=id; return ok; });
+    });
+    return kvGet('project').then(function(P){          // 예전 방식(한 칸 저장)에서 옮겨 오기
+      if(!P) return false;
+      return restoreProject(P).then(function(ok){ if(ok){ curId=newId(); P.migrate=true; } return ok?'migrate':false; });
+    });
+  }).catch(function(){ return false; });
+  return Promise.race([job,timeout]);
 }
-
-// 설치형 웹앱: 오프라인용 서비스워커 + 저장 공간이 지워지지 않게 요청
-if(!NATIVE&&'serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&window.top===window){
-  window.addEventListener('load',function(){ navigator.serviceWorker.register('sw.js').catch(function(){}); });
-}
-try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
 
 layout(false); recall(); renderOpts(); applyPanel(); syncHist();
 loadProject().then(function(ok){
-  if(!ok){ demo(); renderOpts(); syncHist(); }
+  if(!curId) curId=newId();
+  if(!ok||ok==='timeout'){ demo(); renderOpts(); syncHist(); }
   dirty=false; ready=true;
+  if(ok==='migrate'){ dirty=true; saveNow(false).then(function(){ kvDel('project').catch(function(){}); }); }
 });
 var rt;
 window.addEventListener('resize',function(){ syncFades(); clearTimeout(rt); rt=setTimeout(function(){ layout(true); drawSelUI(); syncFades(); },180); });
