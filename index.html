@@ -178,6 +178,16 @@ button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
 @media (max-width:520px){ .wordmark{display:none} .ico.zoomOut{padding:0 8px; gap:4px} }
 @media (max-width:420px){ .ico{width:34px; height:34px; border-radius:11px} .ico svg{width:19px; height:19px} }
 
+/* 설정 창 */
+.pop.settings{width:min(92vw,400px); max-height:min(82vh,680px); overflow:auto; gap:7px}
+.sethd{flex-basis:100%; font-size:12px; font-weight:600; color:var(--muted); letter-spacing:.02em; margin:6px 2px 0}
+.sethd:first-child{margin-top:0}
+.setsec{flex-basis:100%; display:flex; flex-wrap:wrap; gap:6px; align-items:center}
+.pop.settings .wkacts{flex-basis:100%}
+.setnote{flex-basis:100%; font-size:12px; color:var(--muted); line-height:1.5; margin:0 2px}
+.pop.settings .about{max-width:none; flex-basis:100%}
+.pop.settings .about .wordmark{font-size:19px; margin:0}
+
 /* 버전 표시 */
 .ver{font-size:11px; font-weight:500; color:var(--muted); background:var(--sunk); border:1px solid var(--line); border-radius:7px; padding:1px 6px; align-self:center; white-space:nowrap; font-variant-numeric:tabular-nums}
 .about .ver{align-self:flex-start; margin-top:4px}
@@ -337,20 +347,20 @@ input[type=range]{width:88px; accent-color:var(--accent); height:28px; touch-act
 
 <div class="app">
   <div class="topbar">
-    <button class="ico mark" id="aboutBtn" title="Inkling" aria-label="Inkling 정보">
+    <span class="ico mark" aria-hidden="true">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2c3.4 4.2 5.6 7 5.6 9.6A5.6 5.6 0 0 1 12 18.4a5.6 5.6 0 0 1-5.6-5.6c0-2.6 2.2-5.4 5.6-9.6z"/></svg>
-    </button>
+    </span>
     <h1 class="wordmark">Inkling</h1><span class="ver" id="verTag" title="Inkling 버전"></span>
     <span class="spacer"></span>
     <button class="ico zoomOut" id="fitBtn" title="화면에 맞추기" aria-label="화면에 맞추기" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
       <b id="zoomPct">100</b>
     </button>
-    <button class="ico" id="paperBtn" title="종이 고르기" aria-label="종이 고르기">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.2h7l4 4v13.6h-11z"/><path d="M13.5 3.2v4h4"/></svg>
+    <button class="ico" id="newBtn" title="새 그림" aria-label="새 그림">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M6.5 3.2h7l4 4v13.6h-11z"/><path d="M13.5 3.2v4h4"/><path d="M12 10.5v6M9 13.5h6"/></svg>
     </button>
-    <button class="ico" id="projSave" title="저장 · 불러오기" aria-label="저장 · 불러오기" data-pop="1">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/></svg>
+    <button class="ico" id="projSave" title="작품함 (저장한 그림 불러오기)" aria-label="작품함" data-pop="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3.5 7.5V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9.5A1.5 1.5 0 0 0 19 8h-7l-2-2.5H5A1.5 1.5 0 0 0 3.5 7z"/></svg>
     </button>
     <button class="ico" id="undo" title="되돌리기" aria-label="되돌리기" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4.5 9.5h10a5 5 0 0 1 0 10h-5"/><path d="M8.5 5.5l-4 4 4 4"/></svg>
@@ -358,8 +368,8 @@ input[type=range]{width:88px; accent-color:var(--accent); height:28px; touch-act
     <button class="ico" id="redo" title="다시" aria-label="다시 하기" disabled>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M19.5 9.5h-10a5 5 0 0 0 0 10h5"/><path d="M15.5 5.5l4 4-4 4"/></svg>
     </button>
-    <button class="ico" id="clear" title="모두 지우기" aria-label="모두 지우기">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4.8 6.8h14.4"/><path d="M9.6 6.8V4.6h4.8v2.2"/><path d="M6.6 6.8 7.6 19.4h8.8l1-12.6"/></svg>
+    <button class="ico" id="setBtn" title="설정" aria-label="설정" data-pop="1">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
     </button>
     <button class="ico go" id="save" title="그림 꺼내기" aria-label="그림 꺼내기">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v10.5"/><path d="m8 10.8 4 4 4-4"/><path d="M5 19.4h14"/></svg>
@@ -3722,31 +3732,41 @@ function syncFades(){
 })();
 
 /* ---------- 머리띠 ---------- */
-var APP_VERSION='1.5', APP_DATE='2026-10-09';
+var APP_VERSION='1.6', APP_DATE='2026-10-09';
 document.getElementById('verTag').textContent='v'+APP_VERSION;
-var aboutBtn=document.getElementById('aboutBtn');
-aboutBtn.setAttribute('data-pop','1');
-aboutBtn.addEventListener('click',function(ev){
-  ev.stopPropagation();
-  openPop(aboutBtn,function(box){
-    box.appendChild(el('div','about',
-      '<h2 class="wordmark">Inkling</h2>'+
-      '<p>대충 그어도 결이 모여 그림이 되는 그림판.</p>'+
-      '<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> 되돌리기 · <kbd>Enter</kbd> 선택 붙이기 · <kbd>Esc</kbd> 닫기 · <kbd>[</kbd> <kbd>]</kbd> 굵기</p>'+
-      '<span class="ver">버전 '+APP_VERSION+' · '+APP_DATE+'</span>'));
-  },'below');
-});
-document.getElementById('paperBtn').addEventListener('click',function(ev){
-  ev.stopPropagation(); openPop(this,buildPaper,'below');
-});
-document.getElementById('paperBtn').setAttribute('data-pop','1');
-document.getElementById('undo').addEventListener('click',undo);
-document.getElementById('redo').addEventListener('click',redo);
-document.getElementById('clear').addEventListener('click',function(){
+/* 설정: 종이 · 그림 관리 · 정보 */
+function clearLayer(){
   dropSel(); push(); layers.length=0;
   actx.save(); actx.setTransform(1,0,0,1,0,0); actx.clearRect(0,0,art.width,art.height); actx.restore();
   compose(); renderOpts();
+}
+function buildSettings(box){
+  box.classList.add('settings');
+  box.appendChild(el('div','sethd','종이'));
+  var ps=el('div','setsec'); buildPaper(ps); box.appendChild(ps);
+  box.appendChild(el('div','sethd','그림'));
+  var acts=el('div','wkacts');
+  acts.appendChild(actBtn('지금 저장','<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>',function(){ saveNow(true); }));
+  acts.appendChild(actBtn('사진 가져오기','<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/>',function(){ closePop(); imgFile.click(); }));
+  acts.appendChild(actBtn('이 레이어 비우기','<path d="M4.8 6.8h14.4"/><path d="M9.6 6.8V4.6h4.8v2.2"/><path d="M6.6 6.8 7.6 19.4h8.8l1-12.6"/>',function(){
+    if(!confirm('지금 레이어의 그림을 모두 지울까요? (되돌리기로 살릴 수 있어요)')) return;
+    closePop(); clearLayer();
+  }));
+  box.appendChild(acts);
+  box.appendChild(el('div','setnote','그림은 자동으로 저장돼요. 저장한 그림은 위쪽 폴더 버튼(작품함)에서 불러와요.'));
+  box.appendChild(el('div','sethd','정보'));
+  box.appendChild(el('div','about',
+    '<h2 class="wordmark">Inkling</h2>'+
+    '<p>대충 그어도 결이 모여 그림이 되는 그림판.</p>'+
+    '<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> 되돌리기 · <kbd>Enter</kbd> 선택 붙이기 · <kbd>Esc</kbd> 닫기 · <kbd>[</kbd> <kbd>]</kbd> 굵기</p>'+
+    '<span class="ver">버전 '+APP_VERSION+' · '+APP_DATE+'</span>'));
+}
+document.getElementById('setBtn').addEventListener('click',function(ev){
+  ev.stopPropagation(); openPop(this,buildSettings,'below');
 });
+document.getElementById('newBtn').addEventListener('click',function(){ if(ready) startNew(); });
+document.getElementById('undo').addEventListener('click',undo);
+document.getElementById('redo').addEventListener('click',redo);
 var CAP=window.Capacitor, NATIVE=!!(CAP&&CAP.isNativePlatform&&CAP.isNativePlatform());
 var shareBtn=document.getElementById('shareBtn'), saveMsg=document.getElementById('saveMsg');
 var dlBtn=document.getElementById('dlBtn'); dlBtn.hidden=NATIVE;
@@ -3899,7 +3919,7 @@ function saveNow(manual){
         return l;
       });
     }).then(function(){ return kvSet('current',id); }).then(function(){
-      projBtn.title='저장됨 '+hhmm(P.savedAt)+' · 불러오기';
+      projBtn.title='작품함 · 마지막 저장 '+hhmm(P.savedAt);
       projBtn.classList.add('flash'); setTimeout(function(){ projBtn.classList.remove('flash'); },900);
       if(manual) toast('저장했어요 ('+hhmm(P.savedAt)+')');
     });
@@ -3973,12 +3993,8 @@ function actBtn(label,svg,fn){
   b.type='button'; b.addEventListener('click',fn); return b;
 }
 function buildWorks(box){
-  var w=el('div','wkbox'), acts=el('div','wkacts');
-  acts.appendChild(actBtn('지금 저장','<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h7V4"/><path d="M8 20v-6h8v6"/>',function(){ saveNow(true).then(function(){ if(pop&&pop._a===projBtn){ pop.innerHTML=''; buildWorks(pop); } }); }));
-  acts.appendChild(actBtn('새 그림','<path d="M12 5v14M5 12h14"/>',startNew));
-  acts.appendChild(actBtn('사진 가져오기','<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/>',function(){ closePop(); imgFile.click(); }));
-  w.appendChild(acts);
-  w.appendChild(el('div','wkhead','작품함 — 눌러서 불러오기'));
+  var w=el('div','wkbox');
+  w.appendChild(el('div','wkhead','작품함 — 눌러서 불러오기 · 자동 저장돼요'));
   var grid=el('div','wkgrid'); grid.appendChild(el('div','wkempty','불러오는 중…')); w.appendChild(grid);
   box.appendChild(w);
   kvGet('index').catch(function(){ return null; }).then(function(l){
