@@ -94,7 +94,10 @@ button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
 .lyth canvas{width:100%; height:auto; display:block; border-radius:8px}
 .lyth[aria-pressed="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent)}
 .lyrow.off .lyth canvas{opacity:.3}
-.lyth{position:relative}
+.lyth{position:relative; touch-action:none; cursor:grab}
+.lyrow{transition:transform .16s ease}
+.lyrow.dragging{transition:none; position:relative; z-index:2; filter:drop-shadow(0 8px 14px var(--shadow))}
+.lyrow.dragging .lyth{cursor:grabbing}
 .lypct{position:absolute; right:7px; bottom:7px; font:600 10.5px/1 Outfit,system-ui,sans-serif; font-style:normal; background:var(--fg); color:var(--panel); border-radius:6px; padding:3px 5px; opacity:.85}
 .lyop{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted)}
 .lyop input[type=range]{flex:1; width:auto; min-width:0}
@@ -3178,6 +3181,7 @@ function buildLayers(box){
   });
   oi.addEventListener('change',function(){ layerUI(); });
   orow.appendChild(oi); orow.appendChild(ov); wrapEl.appendChild(orow);
+  var dragRows=[];
   for(var i=LY.length-1;i>=0;i--)(function(i){
     var L=LY[i], row=el('div','lyrow'+(L.vis?'':' off'));
     var eye=el('button','pick', L.vis
@@ -3189,9 +3193,11 @@ function buildLayers(box){
     var th=el('button','lyth'); th.type='button'; th.setAttribute('aria-pressed',String(i===cur));
     th.setAttribute('aria-label','레이어 '+(i+1)+' 고르기'); th.appendChild(thumb(L));
     var pc=el('i','lypct',Math.round(lyAlpha(L)*100)+'%'); pc.hidden=lyAlpha(L)>=1; th.appendChild(pc);
-    th.addEventListener('click',function(){ if(sel) commitSel(); useLayer(i); layerUI(); });
+    th.addEventListener('click',function(){ if(th._dragged){ th._dragged=false; return; } if(sel) commitSel(); useLayer(i); layerUI(); });
     row.appendChild(eye); row.appendChild(th); wrapEl.appendChild(row);
+    dragRows.push({row:row, th:th, i:i});
   })(i);
+  dragRows.forEach(function(R,d){ layerDrag(R,d,dragRows); });
   box.appendChild(wrapEl);
 }
 function layerUI(){
@@ -3204,6 +3210,54 @@ function addLayer(){
   if(sel) commitSel();
   var L=newLayer(); LY.splice(cur+1,0,L); useLayer(cur+1);
   pushOp({k:'add',id:L.id}); compose(); layerUI();
+}
+/* 레이어 칸을 꾹 누른 채 위아래로 끌어서 순서 바꾸기 (마우스·손가락·펜 모두) */
+function layerDrag(R,d,all){
+  var st=null, th=R.th;
+  th.addEventListener('pointerdown',function(e){
+    if(e.button>0||all.length<2) return;
+    st={id:e.pointerId, y:e.clientY, drag:false, to:d};
+  });
+  th.addEventListener('pointermove',function(e){
+    if(!st||e.pointerId!==st.id) return;
+    var dy=e.clientY-st.y;
+    if(!st.drag){
+      if(Math.abs(dy)<7) return;
+      st.drag=true; try{ th.setPointerCapture(st.id); }catch(x){}
+      st.mids=all.map(function(o){ var r=o.row.getBoundingClientRect(); return r.top+r.height/2; });
+      var rr=R.row.getBoundingClientRect(); st.h=rr.height+7;
+      R.row.classList.add('dragging');
+    }
+    e.preventDefault();
+    R.row.style.transform='translateY('+dy+'px)';
+    var to=0;
+    st.mids.forEach(function(m,k){ if(k!==d&&m<e.clientY) to++; });
+    st.to=to;
+    all.forEach(function(o,k){
+      if(k===d) return;
+      var sh=0;
+      if(d<k&&k<=to) sh=-st.h; else if(to<=k&&k<d) sh=st.h;
+      o.row.style.transform=sh?'translateY('+sh+'px)':'';
+    });
+  });
+  function end(e){
+    if(!st||e.pointerId!==st.id) return;
+    var was=st.drag, to=st.to; st=null;
+    if(!was) return;
+    th._dragged=true; setTimeout(function(){ th._dragged=false; },0);
+    all.forEach(function(o){ o.row.style.transform=''; o.row.classList.remove('dragging'); });
+    // 화면 칸 순서(위=높은 레이어) → 레이어 번호
+    moveLayerTo(R.i, LY.length-1-to);
+  }
+  th.addEventListener('pointerup',end);
+  th.addEventListener('pointercancel',end);
+}
+function moveLayerTo(i,j){
+  if(i===j||j<0||j>=LY.length){ layerUI(); return; }
+  if(sel) commitSel();
+  var L=LY[i]; LY.splice(i,1); LY.splice(j,0,L);
+  pushOp({k:'mv',id:L.id,to:i});
+  useLayer(j); compose(); layerUI(); if(typeof schedSave==='function') schedSave();
 }
 function moveLayer(d){
   var i=cur, j=i+d;
@@ -3668,7 +3722,7 @@ function syncFades(){
 })();
 
 /* ---------- 머리띠 ---------- */
-var APP_VERSION='1.4', APP_DATE='2026-10-09';
+var APP_VERSION='1.5', APP_DATE='2026-10-09';
 document.getElementById('verTag').textContent='v'+APP_VERSION;
 var aboutBtn=document.getElementById('aboutBtn');
 aboutBtn.setAttribute('data-pop','1');
