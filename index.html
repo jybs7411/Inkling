@@ -94,6 +94,11 @@ button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
 .lyth canvas{width:100%; height:auto; display:block; border-radius:8px}
 .lyth[aria-pressed="true"]{border-color:var(--accent); box-shadow:inset 0 0 0 2px var(--accent)}
 .lyrow.off .lyth canvas{opacity:.3}
+.lyth{position:relative}
+.lypct{position:absolute; right:7px; bottom:7px; font:600 10.5px/1 Outfit,system-ui,sans-serif; font-style:normal; background:var(--fg); color:var(--panel); border-radius:6px; padding:3px 5px; opacity:.85}
+.lyop{display:flex; align-items:center; gap:6px; font-size:12px; color:var(--muted)}
+.lyop input[type=range]{flex:1; width:auto; min-width:0}
+.lyop b{font-weight:600; color:var(--fg); min-width:34px; text-align:right; font-variant-numeric:tabular-nums}
 .lyhead{display:flex; gap:6px}
 .lyhead .pick{flex:1}
 .pick:disabled{opacity:.35; cursor:default}
@@ -169,6 +174,11 @@ button{font:inherit; color:inherit; cursor:pointer; border:0; background:none}
 @media (max-width:760px){ .topbar{gap:4px} }
 @media (max-width:520px){ .wordmark{display:none} .ico.zoomOut{padding:0 8px; gap:4px} }
 @media (max-width:420px){ .ico{width:34px; height:34px; border-radius:11px} .ico svg{width:19px; height:19px} }
+
+/* 버전 표시 */
+.ver{font-size:11px; font-weight:500; color:var(--muted); background:var(--sunk); border:1px solid var(--line); border-radius:7px; padding:1px 6px; align-self:center; white-space:nowrap; font-variant-numeric:tabular-nums}
+.about .ver{align-self:flex-start; margin-top:4px}
+@media (max-width:520px){ .topbar>.ver{display:none} }
 
 /* 작품함 (저장 · 불러오기) */
 .wkbox{display:flex; flex-direction:column; gap:9px; width:min(84vw,360px)}
@@ -327,7 +337,7 @@ input[type=range]{width:88px; accent-color:var(--accent); height:28px; touch-act
     <button class="ico mark" id="aboutBtn" title="Inkling" aria-label="Inkling 정보">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.2c3.4 4.2 5.6 7 5.6 9.6A5.6 5.6 0 0 1 12 18.4a5.6 5.6 0 0 1-5.6-5.6c0-2.6 2.2-5.4 5.6-9.6z"/></svg>
     </button>
-    <h1 class="wordmark">Inkling</h1>
+    <h1 class="wordmark">Inkling</h1><span class="ver" id="verTag" title="Inkling 버전"></span>
     <span class="spacer"></span>
     <button class="ico zoomOut" id="fitBtn" title="화면에 맞추기" aria-label="화면에 맞추기" hidden>
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5"/></svg>
@@ -1939,15 +1949,17 @@ function prepCtx(x){ x.setTransform(DPR,0,0,DPR,0,0); x.lineCap='round'; x.lineJ
 function newLayer(){
   var c=document.createElement('canvas'); c.width=board.width; c.height=board.height;
   var x=c.getContext('2d',{willReadFrequently:true}); prepCtx(x);
-  return {id:LID++, art:c, ctx:x, strokes:[], vis:true};
+  return {id:LID++, art:c, ctx:x, strokes:[], vis:true, alpha:1};
 }
 function useLayer(i){
   cur=Math.max(0,Math.min(LY.length-1,i));
   art=LY[cur].art; actx=LY[cur].ctx; layers=LY[cur].strokes;
 }
+function lyAlpha(L){ return L.alpha==null?1:L.alpha; }   // 레이어 투명도 (0.1~1)
 function byId(id){ for(var i=0;i<LY.length;i++) if(LY[i].id===id) return i; return -1; }
-function drawStrokes(x,list){
-  list.forEach(function(L){ x.globalAlpha=L.a; x.globalCompositeOperation=L.op||'source-over'; x.drawImage(L.c,L.dx,L.dy); });
+function drawStrokes(x,list,mul){
+  if(mul==null) mul=1;
+  list.forEach(function(L){ x.globalAlpha=L.a*mul; x.globalCompositeOperation=L.op||'source-over'; x.drawImage(L.c,L.dx,L.dy); });
   x.globalAlpha=1; x.globalCompositeOperation='source-over';
 }
 function flattenL(L){
@@ -2033,7 +2045,7 @@ function compose(rect){
     }
   } else ctx.clearRect(0,0,board.width,board.height);
   ctx.drawImage(bgc,0,0);
-  LY.forEach(function(Ly){ if(!Ly.vis) return; ctx.drawImage(Ly.art,0,0); drawStrokes(ctx,Ly.strokes); });
+  LY.forEach(function(Ly){ if(!Ly.vis) return; var la=lyAlpha(Ly); ctx.globalAlpha=la; ctx.drawImage(Ly.art,0,0); ctx.globalAlpha=1; drawStrokes(ctx,Ly.strokes,la); });
   ctx.restore();
 }
 function spanOf(a,b,pad){
@@ -3154,6 +3166,18 @@ function buildLayers(box){
   dn.type='button'; dn.title='레이어 아래로 내리기'; dn.setAttribute('aria-label','레이어 아래로 내리기'); dn.disabled=cur<=0;
   dn.addEventListener('click',function(){ moveLayer(-1); });
   head.appendChild(add); head.appendChild(up); head.appendChild(dn); head.appendChild(del); wrapEl.appendChild(head);
+  var CL=LY[cur], orow=el('div','lyop');
+  orow.innerHTML='<span>불투명도</span>';
+  var oi=document.createElement('input'); oi.type='range'; oi.min=10; oi.max=100; oi.step=1;
+  oi.value=Math.round(lyAlpha(CL)*100); oi.setAttribute('aria-label','지금 레이어 불투명도');
+  var ov=el('b','',oi.value+'%');
+  oi.addEventListener('input',function(){
+    CL.alpha=parseInt(oi.value,10)/100; ov.textContent=oi.value+'%'; dirty=true; compose();
+    var bd=wrapEl.querySelector('.lyrow [aria-pressed="true"] .lypct');
+    if(bd){ bd.textContent=oi.value+'%'; bd.hidden=oi.value>=100; }
+  });
+  oi.addEventListener('change',function(){ layerUI(); });
+  orow.appendChild(oi); orow.appendChild(ov); wrapEl.appendChild(orow);
   for(var i=LY.length-1;i>=0;i--)(function(i){
     var L=LY[i], row=el('div','lyrow'+(L.vis?'':' off'));
     var eye=el('button','pick', L.vis
@@ -3164,6 +3188,7 @@ function buildLayers(box){
     eye.addEventListener('click',function(){ L.vis=!L.vis; compose(); layerUI(); });
     var th=el('button','lyth'); th.type='button'; th.setAttribute('aria-pressed',String(i===cur));
     th.setAttribute('aria-label','레이어 '+(i+1)+' 고르기'); th.appendChild(thumb(L));
+    var pc=el('i','lypct',Math.round(lyAlpha(L)*100)+'%'); pc.hidden=lyAlpha(L)>=1; th.appendChild(pc);
     th.addEventListener('click',function(){ if(sel) commitSel(); useLayer(i); layerUI(); });
     row.appendChild(eye); row.appendChild(th); wrapEl.appendChild(row);
   })(i);
@@ -3643,6 +3668,8 @@ function syncFades(){
 })();
 
 /* ---------- 머리띠 ---------- */
+var APP_VERSION='1.4', APP_DATE='2026-10-09';
+document.getElementById('verTag').textContent='v'+APP_VERSION;
 var aboutBtn=document.getElementById('aboutBtn');
 aboutBtn.setAttribute('data-pop','1');
 aboutBtn.addEventListener('click',function(ev){
@@ -3651,7 +3678,8 @@ aboutBtn.addEventListener('click',function(ev){
     box.appendChild(el('div','about',
       '<h2 class="wordmark">Inkling</h2>'+
       '<p>대충 그어도 결이 모여 그림이 되는 그림판.</p>'+
-      '<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> 되돌리기 · <kbd>Enter</kbd> 선택 붙이기 · <kbd>Esc</kbd> 닫기 · <kbd>[</kbd> <kbd>]</kbd> 굵기</p>'));
+      '<p><kbd>Ctrl</kbd>+<kbd>Z</kbd> 되돌리기 · <kbd>Enter</kbd> 선택 붙이기 · <kbd>Esc</kbd> 닫기 · <kbd>[</kbd> <kbd>]</kbd> 굵기</p>'+
+      '<span class="ver">버전 '+APP_VERSION+' · '+APP_DATE+'</span>'));
   },'below');
 });
 document.getElementById('paperBtn').addEventListener('click',function(ev){
@@ -3776,7 +3804,7 @@ function snapshot(){
       src=document.createElement('canvas'); src.width=L.art.width; src.height=L.art.height;
       var x=src.getContext('2d'); x.drawImage(L.art,0,0); drawStrokes(x,L.strokes);
     }
-    return new Promise(function(res,rej){ src.toBlob(function(b){ b?res({vis:L.vis,blob:b}):rej(new Error('blob')); },'image/png'); });
+    return new Promise(function(res,rej){ src.toBlob(function(b){ b?res({vis:L.vis,alpha:lyAlpha(L),blob:b}):rej(new Error('blob')); },'image/png'); });
   });
   var meta={ratio:S.ratio,res:S.res,paper:S.paper,texture:S.texture,cur:cur,savedAt:Date.now()};
   return Promise.all(jobs).then(function(ls){ meta.layers=ls; return meta; });
@@ -3837,7 +3865,7 @@ if(CAP&&CAP.Plugins&&CAP.Plugins.App) CAP.Plugins.App.addListener('pause',functi
 function blankCanvas(){
   dropSel();
   LY.length=1; useLayer(0);
-  var L=LY[0]; L.strokes.length=0; L.vis=true;
+  var L=LY[0]; L.strokes.length=0; L.vis=true; L.alpha=1;
   L.ctx.save(); L.ctx.setTransform(1,0,0,1,0,0); L.ctx.clearRect(0,0,L.art.width,L.art.height); L.ctx.restore();
   undoStack.length=0; redoStack.length=0; syncHist();
   compose(); layerUI();
@@ -3945,6 +3973,7 @@ function restoreProject(P){
     imgs.forEach(function(im,i){
       var L=i?newLayer():L0; if(i) LY.push(L);
       L.vis=list[i].vis!==false;
+      L.alpha=(typeof list[i].alpha==='number')?Math.max(.1,Math.min(1,list[i].alpha)):1;
       var x=L.ctx; x.save(); x.setTransform(1,0,0,1,0,0); x.globalAlpha=1; x.globalCompositeOperation='source-over';
       x.clearRect(0,0,L.art.width,L.art.height); x.drawImage(im,0,0,L.art.width,L.art.height); x.restore();
     });
