@@ -2008,7 +2008,7 @@ var TOOLS=[
 var SIZES={brush:6, shape:8, eraser:26, smudge:16, stamp:8};
 var S={tool:'brush', brush:'sketchy', ink:INKS[0], paper:PAPERS[0], texture:'none',
        size:SIZES.brush, smooth:62, reach:46, dense:55, sym:1, stamp:STAMPS[0], pen:true,
-       pal:0, guide:'none', predict:true, prevTool:'brush', erase:'area', shape:'grass', opacity:100, gap:50, angle:0, ratio:0, res:1800, selShape:'rect', selMode2:'lock', panel:true, themes:{shape:'사람',stamp:'동물'}, own:true, delColor:false, strength:75, smudge:'push'};
+       pal:0, guide:'none', predict:false, prevTool:'brush', erase:'area', shape:'grass', opacity:100, gap:50, angle:0, ratio:0, res:1800, selShape:'rect', selMode2:'lock', panel:true, themes:{shape:'사람',stamp:'동물'}, own:true, delColor:false, strength:75, smudge:'push'};
 var W=0,H=0,DPR=1,hue=0;
 var layers=[], BAKE_AT=70;
 /* 레이어: 각자 굳은 그림(art)과 아직 따로 떼어 낼 수 있는 획(strokes)을 가진다.
@@ -2117,6 +2117,7 @@ function paintBg(){
 }
 function compose(rect){
   rev++;
+  var cr=null;
   ctx.save(); ctx.setTransform(1,0,0,1,0,0);
   if(rect&&S.sym===1){
     var x=Math.max(0,Math.floor((rect.x)*DPR)), y=Math.max(0,Math.floor((rect.y)*DPR));
@@ -2124,10 +2125,11 @@ function compose(rect){
     if(w>0&&h>0){
       ctx.beginPath(); ctx.rect(x,y,w,h); ctx.clip();
       ctx.clearRect(x,y,w,h);
+      cr={x:x,y:y,w:w,h:h};
     }
   } else ctx.clearRect(0,0,board.width,board.height);
   ctx.drawImage(bgc,0,0);
-  drawLayers(ctx);
+  drawLayers(ctx,cr);
   ctx.restore();
 }
 /* 레이어를 아래부터 쌓는다. 합치는 방식(블렌드)이나 아래 레이어에 맞추기(클리핑)가 있으면
@@ -2141,31 +2143,38 @@ function scratch(k){
 function plainLayer(L){ return lyAlpha(L)>=1 && !L.clip && (!L.blend||L.blend==='source-over'); }
 function baseOf(i){ for(var k=i-1;k>=0;k--) if(!LY[k].clip) return k; return -1; }
 function groupOf(L,c){ c.drawImage(L.art,0,0); drawStrokes(c,L.strokes,1); }
-function drawLayers(c){
+function drawLayers(c,r){      // r: 일부만 다시 그릴 때의 영역(기기 화소)
   for(var i=0;i<LY.length;i++){
     var Ly=LY[i]; if(!Ly.vis) continue;
     var la=lyAlpha(Ly), bl=Ly.blend||'source-over', bi=Ly.clip?baseOf(i):-1;
     if(bl==='source-over'&&bi<0){ c.globalAlpha=la; c.drawImage(Ly.art,0,0); c.globalAlpha=1; drawStrokes(c,Ly.strokes,la); continue; }
     if(bi>=0&&!LY[bi].vis) continue;
     var t=scratch(0), tc=t.getContext('2d');
-    tc.setTransform(1,0,0,1,0,0); tc.globalAlpha=1; tc.globalCompositeOperation='source-over'; tc.clearRect(0,0,t.width,t.height);
+    var rx=r?r.x:0, ry=r?r.y:0, rw=r?r.w:t.width, rh=r?r.h:t.height;
+    tc.save(); tc.setTransform(1,0,0,1,0,0); tc.globalAlpha=1; tc.globalCompositeOperation='source-over';
+    tc.beginPath(); tc.rect(rx,ry,rw,rh); tc.clip(); tc.clearRect(rx,ry,rw,rh);
     groupOf(Ly,tc);
     if(bi>=0){
       var m=scratch(1), mc=m.getContext('2d');
-      mc.setTransform(1,0,0,1,0,0); mc.globalAlpha=1; mc.globalCompositeOperation='source-over'; mc.clearRect(0,0,m.width,m.height);
-      groupOf(LY[bi],mc);
+      mc.save(); mc.setTransform(1,0,0,1,0,0); mc.globalAlpha=1; mc.globalCompositeOperation='source-over';
+      mc.beginPath(); mc.rect(rx,ry,rw,rh); mc.clip(); mc.clearRect(rx,ry,rw,rh);
+      groupOf(LY[bi],mc); mc.restore();
       tc.globalCompositeOperation='destination-in'; tc.drawImage(m,0,0); tc.globalCompositeOperation='source-over';
     }
-    c.globalAlpha=la; c.globalCompositeOperation=bl; c.drawImage(t,0,0);
+    tc.restore();
+    c.globalAlpha=la; c.globalCompositeOperation=bl; c.drawImage(t,rx,ry,rw,rh,rx,ry,rw,rh);
     c.globalAlpha=1; c.globalCompositeOperation='source-over';
   }
 }
 /* 알파 잠금: 이미 그려진 곳(투명하지 않은 곳)에만 칠해지도록 획을 잘라 낸다 */
 function lockMask(c,dx,dy){
-  var L=LY[cur]; flattenL(L);
+  // 그림 바닥과 아직 떼어 낼 수 있는 획의 투명도를 겹쳐 본뜬 뒤, 그 모양대로만 남긴다 (바닥을 건드리지 않아 되돌리기 기록이 가볍다)
+  var L=LY[cur], m=document.createElement('canvas'); m.width=c.width; m.height=c.height;
+  var mc=m.getContext('2d');
+  mc.drawImage(L.art,dx,dy,c.width,c.height,0,0,c.width,c.height);
+  L.strokes.forEach(function(st){ mc.globalAlpha=st.a; mc.drawImage(st.c,st.dx-dx,st.dy-dy); });
   var x=c.getContext('2d'); x.save(); x.setTransform(1,0,0,1,0,0);
-  x.globalAlpha=1; x.globalCompositeOperation='destination-in';
-  x.drawImage(L.art,dx,dy,c.width,c.height,0,0,c.width,c.height); x.restore();
+  x.globalAlpha=1; x.globalCompositeOperation='destination-in'; x.drawImage(m,0,0); x.restore();
 }
 function spanOf(a,b,pad){
   var x0=Math.min(a.x,b.x)-pad, y0=Math.min(a.y,b.y)-pad;
@@ -2999,7 +3008,7 @@ wrap.addEventListener('pointermove',function(e){
   pointer=pos(last); readPressure(last);
   // 펜은 화면에 닿기 직전의 움직임을 미리 알려 준다 — 선 끝을 살짝 앞서 따라가게 해서 늦게 그려지는 느낌을 줄인다
   if(S.predict&&e.pointerType==='pen'&&e.getPredictedEvents){
-    try{ var pe=e.getPredictedEvents(); if(pe&&pe.length){ var q=pos(pe[0]); pointer={x:pointer.x+(q.x-pointer.x)*.6, y:pointer.y+(q.y-pointer.y)*.6}; } }catch(x){}
+    try{ var pe=e.getPredictedEvents(); if(pe&&pe.length){ var q=pos(pe[0]); pointer={x:pointer.x+(q.x-pointer.x)*.4, y:pointer.y+(q.y-pointer.y)*.4}; } }catch(x){}
   }
 });
 function endPtr(){
@@ -3934,6 +3943,8 @@ function buildPaper(box){
     b.setAttribute('aria-label','종이 해상도 '+r); b.setAttribute('aria-pressed',String(r===S.res));
     b.classList.add('rs');
     b.addEventListener('click',function(){
+      var cap=r>2000?6:(r>1400?8:LAYER_CAP);
+      if(LY.length>cap){ toast('레이어가 '+LY.length+'개라서 이 해상도로는 바꿀 수 없어요 (최대 '+cap+'개)'); return; }
       S.res=r; layout(true); lab.textContent=pxText();
       [].forEach.call(box.querySelectorAll('.rs'),function(x,k){ x.setAttribute('aria-pressed',String(RESES[k]===S.res)); });
     });
@@ -4011,7 +4022,7 @@ function buildSettings(box){
   hs.appendChild(actBtn(refwin.hidden?'참고 사진 띄우기':'참고 사진 닫기','<rect x="3.5" y="5" width="17" height="14" rx="2.5"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-4.5 4 3.5 3-2.5 4 3.5"/>',function(){
     closePop(); if(refwin.hidden) refFile.click(); else closeRef();
   }));
-  var pr=actBtn('펜 반응 앞당기기',svgIc('<path d="M4 18c4-9 8-9 12-4"/><path d="M16 14l4-1M16 14l1.5 3.6" />'),function(){
+  var pr=actBtn('펜 반응 앞당기기 (실험)',svgIc('<path d="M4 18c4-9 8-9 12-4"/><path d="M16 14l4-1M16 14l1.5 3.6" />'),function(){
     S.predict=!S.predict; remember(); pr.setAttribute('aria-pressed',String(S.predict));
   });
   pr.setAttribute('aria-pressed',String(S.predict)); hs.appendChild(pr);
@@ -4148,7 +4159,7 @@ function zipStore(files){      // PNG는 이미 압축돼 있어서 '저장만' 
 }
 function makeExport(fmt){
   var base='inkling-'+stamp(), c;
-  if(fmt==='png') return toBlobP(board,'image/png').then(function(b){ return {blob:b,name:base+'.png'}; });
+  if(fmt==='png') return (prevBlob?Promise.resolve(prevBlob):toBlobP(board,'image/png')).then(function(b){ return {blob:b,name:base+'.png'}; });
   if(fmt==='jpg') return toBlobP(board,'image/jpeg',.92).then(function(b){ return {blob:b,name:base+'.jpg'}; });
   if(fmt==='webp') return toBlobP(board,'image/webp',.92).then(function(b){ return {blob:b,name:base+(b.type==='image/webp'?'.webp':'.png')}; });
   if(fmt==='pngt'){
@@ -4174,11 +4185,15 @@ function refreshExport(){
   }).catch(function(){ if(seq===expSeq) toast('이 형식으로는 만들 수 없어요'); });
 }
 fmtSel.addEventListener('change',refreshExport);
+var prevBlob=null, prevUrl=null;
 document.getElementById('save').addEventListener('click',function(){
   if(sel) commitSel();
-  document.getElementById('shot').src=board.toDataURL('image/png');
   document.getElementById('saveBox').hidden=false;
-  refreshExport();
+  prevBlob=null;      // 미리보기 PNG를 한 번만 만들고, 'PNG' 형식은 같은 파일을 그대로 쓴다
+  toBlobP(board,'image/png').then(function(b){
+    prevBlob=b; if(prevUrl) URL.revokeObjectURL(prevUrl); prevUrl=URL.createObjectURL(b);
+    document.getElementById('shot').src=prevUrl; refreshExport();
+  }).catch(function(){ refreshExport(); });
 });
 shareBtn.addEventListener('click',function(){
   if(!expRes){ toast('잠깐만요, 파일을 만드는 중이에요'); return; }
@@ -4217,7 +4232,7 @@ function backupAll(){
   waitSaved().then(function(){ return kvGet('index'); }).then(function(l){
     var out=[];
     return (l||[]).reduce(function(p,x){
-      return p.then(function(){ return kvGet('work:'+x.id); }).then(function(P){ if(P) return packWork(P).then(function(j){ out.push(j); }); });
+      return p.then(function(){ return kvGet('work:'+x.id); }).then(function(P){ if(P) return packWork(P).then(function(j){ out.push(new Blob([j])); }); });
     },Promise.resolve()).then(function(){
       if(!out.length){ toast('백업할 그림이 없어요'); return; }
       deliver(fileBlob(out),'inkling-backup-'+stamp()+'.inkling'); toast(out.length+'개 그림을 담았어요');
@@ -4237,6 +4252,9 @@ function thumbFromProject(P){
   });
 }
 function importOne(w){
+  try{ return importOne2(w); }catch(e){ return Promise.resolve(null); }
+}
+function importOne2(w){
   if(!w||!Array.isArray(w.layers)||!w.layers.length) return Promise.resolve(null);
   var ls=w.layers.slice(0,LAYER_CAP);
   var ok=ls.every(function(l){ return l&&typeof l.png==='string'&&/^data:image\/(png|jpeg|webp);base64,/.test(l.png); });
@@ -4258,23 +4276,32 @@ function importFile(f){
   f.text().then(function(t){
     var o=JSON.parse(t);
     if(!o||o.app!=='inkling'||!Array.isArray(o.works)) throw new Error('fmt');
-    var ids=[];
+    var ids=[], skipped=0;
     return o.works.slice(0,200).reduce(function(p,w){
-      return p.then(function(){ return importOne(w); }).then(function(id){ if(id) ids.push(id); });
-    },Promise.resolve()).then(function(){ return ids; });
+      return p.then(function(){ return importOne(w); }).catch(function(){ return null; }).then(function(id){ if(id) ids.push(id); else skipped++; });
+    },Promise.resolve()).then(function(){ ids.skipped=skipped; return ids; });
   }).then(function(ids){
     if(!ids.length){ toast('불러올 그림을 찾지 못했어요'); return; }
-    toast(ids.length+'개 그림을 작품함에 넣었어요');
+    toast(ids.length+'개 그림을 작품함에 넣었어요'+(ids.skipped?' ('+ids.skipped+'개는 깨져 있어 건너뛰었어요)':''));
     if(ids.length===1) openWork(ids[0]);
   }).catch(function(){ toast('인클링 파일이 아니거나 열 수 없어요'); });
 }
 var bakFile=document.getElementById('bakFile');
 bakFile.addEventListener('change',function(){ var f=bakFile.files&&bakFile.files[0]; bakFile.value=''; if(f) importFile(f); });
 var persistAsked=false;
-function askPersist(){ if(persistAsked) return; persistAsked=true; try{ if(navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){} }
+function askPersist(){      // 크롬 계열은 조용히 허락해 준다. 파이어폭스 등은 물음 창이 뜨므로 설정의 버튼으로만 요청한다.
+  if(persistAsked) return; persistAsked=true;
+  try{ if(/Chrome\//.test(navigator.userAgent)&&navigator.storage&&navigator.storage.persist) navigator.storage.persist(); }catch(e){}
+}
 
 /* ---------- 그리는 과정(타임랩스): 작은 사진을 차곡차곡 모아 두었다가 영상으로 만든다 ---------- */
-var TL={id:null,frames:[],changed:false,last:null}, TLMAX=300, tlT=null;
+var TL={id:null,frames:[],changed:false,last:null,savedAt:0}, TLMAX=300, tlT=null;
+/* 과정 사진 묶음은 용량이 커서 자동 저장 때마다 쓰지 않는다 — 1분에 한 번, 그리고 앱을 떠나거나 다른 그림으로 옮길 때 */
+function flushTL(force){
+  if(!TL.id||!TL.changed||(!force&&Date.now()-TL.savedAt<60000)) return Promise.resolve();
+  var id=TL.id; TL.changed=false; TL.savedAt=Date.now();
+  return kvSet('tl:'+id,TL.frames).catch(function(){ if(TL.id===id) TL.changed=true; });
+}
 function boardSig(){ return rev; }   // 화면이 바뀔 때마다 오르는 번호 — 바뀐 게 없으면 사진을 또 찍지 않는다
 function tlLoad(id){
   TL.id=id; TL.frames=[]; TL.changed=false; TL.last=null;
@@ -4561,7 +4588,7 @@ function saveNow(manual){
         return l;
       });
     }).then(function(){ return kvSet('current',id); }).then(function(){
-      if(TL.id===id&&TL.changed){ TL.changed=false; kvSet('tl:'+id,TL.frames).catch(function(){}); }
+      if(TL.id===id) flushTL(false);
       saveFails=0; banner('save',null); askPersist();
       projBtn.title='작품함 · 마지막 저장 '+hhmm(P.savedAt);
       projBtn.classList.add('flash'); setTimeout(function(){ projBtn.classList.remove('flash'); },900);
@@ -4578,8 +4605,8 @@ function saveNow(manual){
 function schedSave(){ clearTimeout(saveT); saveT=setTimeout(function(){ saveNow(false); },1500); }
 window.addEventListener('pointerup',function(){ if(ready) schedSave(); });
 window.addEventListener('keyup',function(){ if(ready) schedSave(); });
-document.addEventListener('visibilitychange',function(){ if(document.hidden) saveNow(false); });
-window.addEventListener('pagehide',function(){ saveNow(false); });
+document.addEventListener('visibilitychange',function(){ if(document.hidden){ saveNow(false); flushTL(true); } });
+window.addEventListener('pagehide',function(){ saveNow(false); flushTL(true); });
 if(CAP&&CAP.Plugins&&CAP.Plugins.App) CAP.Plugins.App.addListener('pause',function(){ saveNow(false); });
 
 /* 빈 종이로 새로 시작 */
@@ -4591,7 +4618,7 @@ function blankCanvas(){
   undoStack.length=0; redoStack.length=0; syncHist();
   compose(); layerUI();
 }
-function waitSaved(){ return saveNow(false).then(function(){ return IQ; }); }
+function waitSaved(){ return saveNow(false).then(function(){ return IQ; }).then(function(){ return flushTL(true); }); }
 function startNew(){
   closePop();
   waitSaved().then(function(){
@@ -4730,7 +4757,13 @@ function vcmp(a,b){
   for(var i=0;i<3;i++){ var d=(parseInt(a[i],10)||0)-(parseInt(b[i],10)||0); if(d) return d; }
   return 0;
 }
-function reloadNow(){ saveNow(false).then(function(){ return IQ; }).catch(function(){}).then(function(){ location.reload(); }); }
+function reloadNow(){      // 그리는 중이거나 저장 중이면 잠깐 기다린 뒤, 바뀐 게 없어도 한 번 더 저장하고 새로고침
+  var tries=0;
+  (function go(){
+    if((saving||drawing||sel||filling)&&tries++<20){ setTimeout(go,150); return; }
+    saveNow(true).then(function(){ return IQ; }).then(function(){ return flushTL(true); }).catch(function(){}).then(function(){ location.reload(); });
+  })();
+}
 if('serviceWorker' in navigator&&/^https?:$/.test(location.protocol)&&!NATIVE){
   navigator.serviceWorker.addEventListener('message',function(e){
     var d=e.data; if(!d||d.type!=='inkling-version') return;
